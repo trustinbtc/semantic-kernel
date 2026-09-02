@@ -6,6 +6,11 @@ on:
     paths:
       - "python/semantic_kernel/**"
       - "python/tests/unit/**"
+  push:
+    branches: ["main"]
+    paths:
+      - "python/semantic_kernel/**"
+      - "python/tests/unit/**"
 env:
   # Configure a constant location for the uv cache
   UV_CACHE_DIR: /tmp/.uv-cache
@@ -24,6 +29,7 @@ jobs:
       # Save the PR number to a file since the workflow_run event
       # in the coverage report workflow does not have access to it
       - name: Save PR number
+        if: github.event_name == 'pull_request'
         run: |
           echo ${{ github.event.number }} > ./pr_number
       - name: Set up uv
@@ -47,3 +53,30 @@ jobs:
           overwrite: true
           retention-days: 1
           if-no-files-found: error
+      - name: Upload coverage artifact for code coverage
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-python
+          path: python/python-coverage.xml
+          overwrite: true
+          retention-days: 1
+          if-no-files-found: error
+
+  upload-coverage-python:
+    needs: python-tests-coverage
+    if: ${{ !cancelled() && needs.python-tests-coverage.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write
+    steps:
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-python
+      - uses: actions/upload-code-coverage@v1
+        with:
+          file: python-coverage.xml
+          language: Python
+          label: code-coverage-agent
